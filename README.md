@@ -10,7 +10,7 @@ Vaším úkolem je navrhnout, naimplementovat a natrénovat vlastní mozek tak, 
 Každý tým odevzdá dva soubory se stejným základním jménem:
 
 1) Zdrojový kód mozku
-   - Soubor: AI_engines/AIbrain_<NazevTymu>.py
+   - Soubor: AIbrain_/AIbrain_<NazevTymu>.py
    - Třída uvnitř: AIbrain_<NazevTymu>
    - Příklad: AI_engines/AIbrain_SAFR.py s třídou AIbrain_SAFR
 
@@ -19,7 +19,7 @@ Každý tým odevzdá dva soubory se stejným základním jménem:
    - Vznikne uložením z tréninkové scény (viz níže, pole save_as)
    - Příklad: UserData/SAVES/AIbrain_SAFR.npz
 
-Oba soubory (.py i .npz) pak nahrajete do určeného Git repozitáře podle instrukcí vyučujícího.
+Oba soubory (.py i .npz) pak odevzdejte dle instrukcí vyučujícího.
 Na základě těchto souborů se následně spustí souboje mozků (Duel) mezi jednotlivými týmy.
 
 ------------------------------------------------------------
@@ -111,19 +111,15 @@ Stačí upravit logiku v init_param, decide a mutate podle vašich nápadů a za
 4. Jak projekt spustit
 ------------------------------------------------------------
 
-1) Nainstalujte Python 3.
-   Projekt je testován s běžnou verzí Pythonu 3 (3.10+).
+1) Nainstalujte Python 3.12 a více
+   Projekt je testován s běžnou verzí Pythonu 3 (3.12+).
 
-2) (Doporučeno) Vytvořte virtuální prostředí:
+2) (Doporučeno) Vytvořte virtuální prostředí
 
 
-3) Nainstalujte potřebné balíčky:
+3) Nainstalujte potřebné balíčky: numpy a pandas, např:
 
    pip install pygame numpy
-
-   Případně, pokud dostanete soubor requirements.txt, použijte:
-
-   pip install -r requirements.txt
 
 4) Spusťte hru:
 
@@ -263,10 +259,10 @@ Pro oficiální vyhodnocení se může použít konkrétní vybraná trať (viz 
   os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
   To vypne zvuk a používá „dummy“ driver (bez zvukového výstupu).
-  Na Windows a macOS není potřeba nic měnit.
+  Na Windows a macOS není potřeba nic měnit (nic není treba nikde měnit ;) )
 
 ------------------------------------------------------------
-10. Shrnutí pro studenty
+10. Shrnutí
 ------------------------------------------------------------
 
 1) Vytvořte soubor AI_engines/AIbrain_<NazevTymu>.py a v něm třídu AIbrain_<NazevTymu>
@@ -280,4 +276,4 @@ Pro oficiální vyhodnocení se může použít konkrétní vybraná trať (viz 
    - AI_engines/AIbrain_<NazevTymu>.py
    - UserData/SAVES/AIbrain_<NazevTymu>.npz
 
-5) O zbytek (souboje mozků v módu „Souboj“) se postará vyučující.
+5) zbytek (souboje mozků v módu „Souboj“) se postaráme my.

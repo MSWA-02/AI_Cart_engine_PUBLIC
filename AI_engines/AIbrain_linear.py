@@ -23,6 +23,7 @@ class AIbrain_linear:
 
     def init_param(self):
         # zde si vytvoríme promnenne co potrebujeme pro nas model
+        # parametry modely vzdy inicializovat v této metode
         self.W = (np_random.rand(N_ACTIONS, N_INPUTS) - 0.5) / N_INPUTS
         self.b = (np_random.rand(N_ACTIONS) - 0.5)
 
@@ -80,14 +81,16 @@ class AIbrain_linear:
 
         self.parameters = params_dict
 
+        # Zde nastavit co chceme ukládat:
         self.W = np.array(self.parameters["W"], dtype=float)
         self.b = np.array(self.parameters["b"], dtype=float)
         self.NAME = str(self.parameters["NAME"])
 
-    ##################### do těchto funkcí není potřeba zasahovat:
+
     def calculate_score(self, distance, time, no):
         self.score = distance
 
+    ##################### do těchto funkcí není potřeba zasahovat:
     def passcardata(self, x, y, speed):
         self.x = x
         self.y = y
