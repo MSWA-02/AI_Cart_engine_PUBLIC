@@ -26,7 +26,8 @@ pygame.init()
 ### Students part:
 
 #from AI_engines.AIbrain_TeamName import AIbrain_TeamName as trainbrain
-from AI_engines.AIbrain_linear import AIbrain_linear as trainbrain
+# from AI_engines.AIbrain_Junie import AIbrain_Junie as trainbrain
+from AI_engines.AIbrain_maie import AIbrain_maie as trainbrain
 
 
 
