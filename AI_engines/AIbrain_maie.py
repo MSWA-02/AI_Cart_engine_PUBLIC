@@ -1,10 +1,9 @@
 import numpy as np
-import os
-from datetime import datetime
 
 
 def sigmoid(x):
-    return 1 / (1 + np.exp(-np.clip(x, -40, 40)))
+    x = np.clip(x, -50, 50)
+    return 1.0 / (1.0 + np.exp(-x))
 
 
 class AIbrain_maie:
@@ -13,10 +12,17 @@ class AIbrain_maie:
     def __init__(self):
         self.NAME = f"AIbrain_{self.TEAM_NAME}"
         self.score = 0.0
-        self.prev_distance = 0.0
-        self.car_speed = 0.0
-        self.steer_mem = 0.0
 
+        self.car_speed = 0.0
+        self._steer_memory = 0.0
+
+        self.init_param()
+        self.store()
+
+    # -------------------------------------------------
+    # Inicializace parametrů
+    # -------------------------------------------------
+    def init_param(self):
         self.input_dim = None
         self.hidden = 16
 
@@ -25,141 +31,112 @@ class AIbrain_maie:
         self.W2 = None
         self.b2 = None
 
-        # HYPERPARAMETRY PRO EVOLUCI
-        self.mut_sigma_small = 0.08
-        self.mut_sigma_big = 0.35
-        self.mut_big_prob = 0.08
-        self.reset_weight_prob = 0.01
-        self.steer_smooth = 0.65
+        # === stabilnější mutace ===
+        self.mut_sigma_small = 0.02
+        self.mut_sigma_big = 0.10
+        self.mut_big_prob = 0.02
+        self.reset_weight_prob = 0.002
 
-    # -------------------------------------------------
+        # === plynulejší řízení ===
+        self.steer_smooth = 0.75
 
-    def _init_weights(self, n):
-        self.input_dim = n
-        actual_input = n + 1  # Raycasts + Car speed
-        self.W1 = np.random.randn(self.hidden, actual_input) * 0.3
+    def _init_weights(self, input_dim):
+        self.input_dim = input_dim
+
+        lim1 = np.sqrt(6 / (input_dim + self.hidden))
+        self.W1 = np.random.uniform(-lim1, lim1, (self.hidden, input_dim))
         self.b1 = np.zeros(self.hidden)
-        self.W2 = np.random.randn(2, self.hidden) * 0.3
-        self.b2 = np.array([0.5, 0.0]) # Mírný bias pro plyn vpřed
+
+        lim2 = np.sqrt(6 / (self.hidden + 4))
+        self.W2 = np.random.uniform(-lim2, lim2, (4, self.hidden))
+        self.b2 = np.zeros(4)
 
     # -------------------------------------------------
-
+    # Rozhodování
+    # -------------------------------------------------
     def decide(self, data):
         x = np.array(data, dtype=np.float32)
 
-        if self.W1 is None or self.input_dim != len(x):
+        if self.W1 is None:
             self._init_weights(len(x))
-            
-        # normalizace + blízkost překážky
+
+        # Fix: Ensure x size matches W1 input dimension
+        n_in = self.W1.shape[1]
+        if x.size < n_in:
+            x = np.concatenate([x, np.zeros(n_in - x.size, dtype=np.float32)])
+        elif x.size > n_in:
+            x = x[:n_in]
+
+        # normalizace paprsků
         mx = max(np.max(x), 1e-6)
-        x_norm = 1 - np.clip(x / mx, 0, 1)
+        x = 1.0 - np.clip(x / mx, 0, 1)
 
-        # Rozšíření vstupů o aktuální rychlost
-        speed_norm = self.car_speed / 500.0
-        inputs = np.append(x_norm, speed_norm)
+        # MLP
+        h = np.tanh(self.W1 @ x + self.b1)
+        out = sigmoid(self.W2 @ h + self.b2)
 
-        h = np.tanh(self.W1 @ inputs + self.b1)
-        out = self.W2 @ h + self.b2
-
-        # výstupy
-        throttle = sigmoid(out[0])
-        steer = np.tanh(out[1])
-
-        # plynulé řízení
-        self.steer_mem = (
-            self.steer_smooth * self.steer_mem
-            + (1 - self.steer_smooth) * steer
+        # plynulé zatáčení
+        steer_raw = out[3] - out[2]
+        self._steer_memory = (
+            self.steer_smooth * self._steer_memory
+            + (1 - self.steer_smooth) * steer_raw
         )
 
-        # převod na 4 akce
-        up = throttle
-        down = 0.0  # brzda vypnutá
-        left = max(0.0, -self.steer_mem)
-        right = max(0.0, self.steer_mem)
+        if self._steer_memory > 0:
+            out[3] = 0.5 + abs(self._steer_memory)
+            out[2] = 0.5 - abs(self._steer_memory)
+        else:
+            out[2] = 0.5 + abs(self._steer_memory)
+            out[3] = 0.5 - abs(self._steer_memory)
 
-        # nouzová brzda - selektivní na přední paprsky
-        # data indexy: 3 (-5°), 4 (0°), 5 (5°) jsou v podstatě předek
-        front_danger = max(x_norm[3], x_norm[4], x_norm[5])
-        if front_danger > 0.92:
-            down = 1.0
-            up = 0.0
+        # lehká preference plynu
+        out[0] = np.clip(out[0] + 0.05, 0, 1)
 
-        return [up, down, left, right]
+        return out.tolist()
 
     # -------------------------------------------------
-
+    # Evoluční mutace
+    # -------------------------------------------------
     def mutate(self):
-        def m(a):
-            # Dual-level mutation
-            if np.random.rand() < self.mut_big_prob:
-                sigma = self.mut_sigma_big
-            else:
-                sigma = self.mut_sigma_small
-            
-            a += np.random.normal(0, sigma, a.shape)
-            
-            # Random reset
-            mask = np.random.rand(*a.shape) < self.reset_weight_prob
-            a[mask] = np.random.uniform(-0.5, 0.5, np.sum(mask))
-            
-            return np.clip(a, -2, 2)
+        if self.W1 is None:
+            return
 
-        self.W1 = m(self.W1)
-        self.b1 = m(self.b1)
-        self.W2 = m(self.W2)
-        self.b2 = m(self.b2)
+        big = np.random.rand() < self.mut_big_prob
+        sigma = self.mut_sigma_big if big else self.mut_sigma_small
+
+        def mutate_arr(a):
+            a = a + np.random.normal(0, sigma, a.shape)
+            mask = np.random.rand(*a.shape) < self.reset_weight_prob
+            a[mask] = np.random.uniform(-1, 1, np.sum(mask))
+            return a
+
+        self.W1 = mutate_arr(self.W1)
+        self.b1 = mutate_arr(self.b1)
+        self.W2 = mutate_arr(self.W2)
+        self.b2 = mutate_arr(self.b2)
+
+        # === KLAMP ===
+        np.clip(self.W1, -1.5, 1.5, out=self.W1)
+        np.clip(self.W2, -1.5, 1.5, out=self.W2)
+        np.clip(self.b1, -1.0, 1.0, out=self.b1)
+        np.clip(self.b2, -1.0, 1.0, out=self.b2)
+
+        self._steer_memory = np.clip(self._steer_memory, -1, 1)
+
+        self.store()
 
     # -------------------------------------------------
-
+    # Skórování
+    # -------------------------------------------------
     def calculate_score(self, distance, time, no):
         d = float(distance)
         t = float(time)
 
-        # FAIL FAST – stojí → konec
-        if t > 4 and d < 1.5:
-            self.score = -100
-            self._log_to_file(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')};{no};{d:.2f};{t:.2f};-100.00")
-            return
-
-        # Uložíme si progress pro info, ale fitness postavíme jinak
-        self.prev_distance = d
-
-        # Fitness funkce zaměřená na RYCHLOST a pokrok
-        # 1. Hlavní složka: ujetá vzdálenost (tiles)
-        score = d * 15.0
-        
-        # 2. Průměrná rychlost (d/t) je klíčová pro rychlé projetí
-        if t > 0.5:
-            score += (d / t) * 25.0
-            
-        # 3. Odměna za okamžitou rychlost (motivuje nebrzdit zbytečně)
-        # car_speed je v pixelech/s (0-500)
-        score += (self.car_speed / 5.0) 
-
-        # 4. Penalizace času (aby se nesnažil jen dojet, ale dojet CO NEJRYCHLEJI)
-        score -= t * 3.0
-
-        # checkpoint bonusy - výraznější pro povzbuzení k postupu
-        if d > 50: score += 100
-        if d > 100: score += 400
-        if d > 200: score += 1200
+        score = d
+        score -= 0.02 * t
+        score += 0.05 * self.car_speed
 
         self.score = score
-        self._log_to_file(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')};{no};{d:.2f};{t:.2f};{score:.2f}")
-
-    def _log_to_file(self, data_str):
-        log_dir = "UserData/LOGS"
-        try:
-            if not os.path.exists(log_dir):
-                os.makedirs(log_dir)
-            log_file = os.path.join(log_dir, f"{self.TEAM_NAME}_learning.csv")
-            file_exists = os.path.isfile(log_file)
-            with open(log_file, "a") as f:
-                if not file_exists:
-                    f.write("timestamp;individual_no;distance;time;score\n")
-                f.write(data_str + "\n")
-        except Exception:
-            pass
 
     def passcardata(self, x, y, speed):
         self.car_speed = speed
@@ -168,31 +145,23 @@ class AIbrain_maie:
         return self.score
 
     # -------------------------------------------------
-
-    def get_parameters(self):
-        return {
+    # SAVE / LOAD
+    # -------------------------------------------------
+    def store(self):
+        self.parameters = {
             "W1": self.W1,
             "b1": self.b1,
             "W2": self.W2,
             "b2": self.b2,
-            "mut_sigma_small": self.mut_sigma_small,
-            "mut_sigma_big": self.mut_sigma_big,
-            "mut_big_prob": self.mut_big_prob,
-            "reset_weight_prob": self.reset_weight_prob,
-            "steer_smooth": self.steer_smooth,
-            "hidden": self.hidden,
-            "input_dim": self.input_dim,
         }
 
-    def set_parameters(self, p):
-        self.W1 = p["W1"]
-        self.b1 = p["b1"]
-        self.W2 = p["W2"]
-        self.b2 = p["b2"]
-        if "mut_sigma_small" in p: self.mut_sigma_small = float(p["mut_sigma_small"])
-        if "mut_sigma_big" in p: self.mut_sigma_big = float(p["mut_sigma_big"])
-        if "mut_big_prob" in p: self.mut_big_prob = float(p["mut_big_prob"])
-        if "reset_weight_prob" in p: self.reset_weight_prob = float(p["reset_weight_prob"])
-        if "steer_smooth" in p: self.steer_smooth = float(p["steer_smooth"])
-        if "hidden" in p: self.hidden = int(p["hidden"])
-        if "input_dim" in p: self.input_dim = int(p["input_dim"])
+    def get_parameters(self):
+        self.store()
+        return self.parameters
+
+    def set_parameters(self, parameters):
+        self.parameters = parameters
+        self.W1 = parameters["W1"]
+        self.b1 = parameters["b1"]
+        self.W2 = parameters["W2"]
+        self.b2 = parameters["b2"]
